@@ -1,0 +1,48 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/verifier",
+    "crates/vk-host",
+    "circuits/shielded-pool",
+    "programs/shielded-pool-verifier",
+]
+exclude = ["vendor/halo2-base"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.85"
+
+[workspace.dependencies]
+# arkworks (no_std on BPF; host-side too)
+ark-bn254       = { version = "0.5", default-features = false, features = ["curve"] }
+ark-ff          = { version = "0.5", default-features = false }
+ark-ec          = { version = "0.5", default-features = false }
+ark-serialize   = { version = "0.5", default-features = false }
+ark-std         = { version = "0.5", default-features = false }
+
+# Solana dependencies used by the verifier and the minimal SBF wrapper.
+solana-program  = "4"
+solana-bn254    = "3"
+pinocchio       = "0.11"
+
+# Halo2 dependencies used only by the off-chain fixture generator.
+halo2_proofs = { git = "https://github.com/input-output-hk/halo2", rev = "0bca06e58937fbe213a0530ecac9d8e0fed501d6", default-features = false, features = ["circuit-params", "derive_serde"] }
+halo2curves  = { version = "0.7", default-features = false, package = "halo2curves" }
+
+# Host tests and transcript fallback.
+hex             = { version = "0.4", default-features = false, features = ["alloc"] }
+sha3            = { version = "0.10", default-features = false }
+mollusk-svm     = "0.12"
+thiserror       = "1"
+rand            = "0.8"
+
+[profile.release]
+overflow-checks = true
+lto             = "thin"
+codegen-units   = 1
+
+[profile.release-bpf]
+inherits        = "release"
+opt-level       = 3
+overflow-checks = false

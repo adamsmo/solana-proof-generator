@@ -1,0 +1,32 @@
+[package]
+name = "shielded-pool-solana-verifier"
+version = "0.1.0"
+description = "Solana SBF verifier for the shielded-pool Halo2 BN254/GWC circuit"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+bpf-entrypoint = []
+simd-0284-le = ["halo2-solana-verifier/simd-0284-le"]
+cu-bench = []
+svm-test = []
+
+[dependencies]
+halo2-solana-verifier = { path = "../../crates/verifier", default-features = false, features = ["solana-syscalls"] }
+pinocchio = { workspace = true }
+
+[dev-dependencies]
+mollusk-svm = { workspace = true }
+solana-account = "3.4"
+solana-instruction = "3"
+solana-pubkey = "4"
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = ['cfg(target_os, values("solana"))']

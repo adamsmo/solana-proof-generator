@@ -1,0 +1,30 @@
+[package]
+name = "shielded-pool-circuit"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+halo2-solana-verifier = { path = "../../crates/verifier", features = ["std", "solana-syscalls"] }
+halo2-solana-vk-host = { path = "../../crates/vk-host" }
+
+halo2-base = { path = "../../vendor/halo2-base", default-features = false, features = ["halo2-pse", "display"] }
+halo2_proofs = { workspace = true }
+halo2curves = { workspace = true }
+pse-poseidon = { git = "https://github.com/axiom-crypto/pse-poseidon.git", rev = "19d3b09481bda0e95e7c005906365d070fceb752" }
+ark-bn254 = { workspace = true, features = ["std"] }
+ark-ff = { workspace = true, features = ["std"] }
+
+anyhow = "1"
+hex = { workspace = true, features = ["std"] }
+hex-literal = "1.1"
+rand = { workspace = true }
+sha3 = { workspace = true }
+solana-poseidon = "4"
+solana-bn254 = { workspace = true }
+
+[[bin]]
+name = "generate-shielded-pool-fixture"
+path = "src/bin/generate_fixture.rs"
