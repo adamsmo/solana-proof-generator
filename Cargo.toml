@@ -12,6 +12,7 @@ exclude = ["vendor/halo2-base"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.85"
+# rust-version = "1.89"
 
 [workspace.dependencies]
 # arkworks (no_std on BPF; host-side too)
@@ -22,7 +23,10 @@ ark-serialize   = { version = "0.5", default-features = false }
 ark-std         = { version = "0.5", default-features = false }
 
 # Solana dependencies used by the verifier and the minimal SBF wrapper.
-solana-program  = "4"
+# solana-define-syscall (not solana-program): Quasar/pinocchio no_std programs
+# cannot link solana-program (duplicate panic_impl via std). Raw syscalls only.
+# Major 5 matches solana-bn254 3.x and Quasar programs' define-syscall pin.
+solana-define-syscall = "5"
 solana-bn254    = "3"
 pinocchio       = "0.11"
 

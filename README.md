@@ -76,7 +76,7 @@ cargo-build-sbf --version
 
 ## Repository layout
 
-- `crates/verifier`: `no_std` BN254/GWC verifier and the `verify_gwc` API
+- `crates/verifier`: `no_std` BN254/GWC verifier and the `verify_gwc` API. On-chain path uses `solana-bn254` plus raw `sol_keccak256` / `sol_big_mod_exp` via `solana-define-syscall` (no `solana-program`, so Quasar/`no_std` callers can link it)
 - `programs/shielded-pool-verifier`: minimal SBF wrapper with a pinned circuit VK and KZG VK
 - `circuits/shielded-pool`: off-chain circuit, prover and fixture generator
 - `crates/vk-host`: off-chain compiler from the Halo2 `VerifyingKey` to the flat on-chain VK format
