@@ -2,17 +2,6 @@
 
 extern crate alloc;
 
-pub mod allocator;
-
-// Global allocator set for this solana program.
-// Note: this will have to be changed as Quasar only supports "bump-allocator"
-#[cfg(all(
-    any(target_os = "solana", target_arch = "bpf"),
-    feature = "bpf-entrypoint"
-))]
-#[global_allocator]
-static A: allocator::FreelistAllocator = allocator::FreelistAllocator::new();
-
 use alloc::vec::Vec;
 use halo2_solana_verifier::{
     curve::{G1, G2},
@@ -162,10 +151,12 @@ fn bench_scalar_mul(instruction_data: &[u8], custom: bool) -> Result<(), u32> {
 #[cfg(feature = "bpf-entrypoint")]
 mod entry {
     use pinocchio::{
-        account::AccountView, address::Address, error::ProgramError, program_entrypoint,
-        ProgramResult,
+        account::AccountView, address::Address, default_allocator, error::ProgramError,
+        program_entrypoint, ProgramResult,
     };
 
+    // set memory allocator to bump allocator (used by pinocchio and quasar)
+    default_allocator!();
     program_entrypoint!(process_instruction);
 
     fn process_instruction(
@@ -184,6 +175,7 @@ mod entry {
         match tag {
             super::VERIFY_TAG => {
                 // here we are borrowing the account data not copying it on stack (zero-copy style)
+                // account data contains: H2PF0001 (custom 8 byte tag) + proof + public inputs
                 let data: &[u8] = unsafe { account.borrow_unchecked() };
                 super::run(data).map_err(ProgramError::Custom)
             }
