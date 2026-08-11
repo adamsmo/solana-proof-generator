@@ -4,6 +4,8 @@ extern crate alloc;
 
 pub mod allocator;
 
+// Global allocator set for this solana program.
+// Note: this will have to be changed as Quasar only supports "bump-allocator"
 #[cfg(all(
     any(target_os = "solana", target_arch = "bpf"),
     feature = "bpf-entrypoint"
@@ -70,6 +72,7 @@ fn parse_fixture(data: &[u8]) -> Result<ParsedInput<'_>, u32> {
     if public_input_end != data.len() {
         return Err(errors::PUBLIC_INPUTS_OUT_OF_BOUNDS);
     }
+    // This is making a heap allocation (Vec allocates on heap)
     let mut public_inputs = Vec::with_capacity(public_input_count);
     while cursor < public_input_end {
         let mut value = [0u8; 32];
@@ -180,6 +183,7 @@ mod entry {
 
         match tag {
             super::VERIFY_TAG => {
+                // here we are borrowing the account data not copying it on stack (zero-copy style)
                 let data: &[u8] = unsafe { account.borrow_unchecked() };
                 super::run(data).map_err(ProgramError::Custom)
             }
