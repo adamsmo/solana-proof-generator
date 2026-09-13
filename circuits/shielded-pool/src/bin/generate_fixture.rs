@@ -1,11 +1,7 @@
 use std::{env, fs, path::PathBuf};
 
-use shielded_pool_circuit::{
-    circuit::{
-        consts::{MAX_CHUNKS, PROD_TREE_DEPTH},
-        prover::{build_test_input, generate_test_vector},
-    },
-    Fr,
+use shielded_pool_circuit::circuit::prover::{
+    build_fixture_input, generate_test_vector, FIXTURE_SEED,
 };
 
 fn main() -> anyhow::Result<()> {
@@ -15,9 +11,7 @@ fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|| PathBuf::from("fixtures"));
     fs::create_dir_all(&output_dir)?;
 
-    let chunks: [Fr; MAX_CHUNKS] = [Fr::from(2), Fr::from(3), Fr::from(4)];
-    let input = build_test_input::<PROD_TREE_DEPTH>(chunks, Fr::from(9), 0);
-    let vector = generate_test_vector(input, [0x53; 32])?;
+    let vector = generate_test_vector(build_fixture_input(), FIXTURE_SEED)?;
 
     let mut public_inputs = Vec::with_capacity(5 * 32);
     for value in &vector.public_inputs {

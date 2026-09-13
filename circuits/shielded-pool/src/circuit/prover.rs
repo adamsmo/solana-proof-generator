@@ -1,8 +1,9 @@
 use crate::{
     circuit::{
         constraints::poseidon::solana_poseidon_native,
-        consts::MAX_CHUNKS,
+        consts::{MAX_CHUNKS, PROD_TREE_DEPTH},
         full_circuit::{self, build_full_circuit},
+        utils::convert_pubkey_32bytes_to_fr,
     },
     transcript::{fr_to_be, g1_to_be, SolanaKeccak},
     Fr,
@@ -29,6 +30,7 @@ use halo2curves::{
     ff::PrimeField,
     group::{prime::PrimeCurveAffine, Curve},
 };
+use hex_literal::hex;
 use rand::{rngs::StdRng, SeedableRng};
 
 pub const BLINDING_FACTOR: usize = 9;
@@ -167,13 +169,38 @@ pub fn generate_test_vector<const TREE_DEPTH: usize>(
     })
 }
 
+/// Recipient of every chunk in the checked-in fixture.
+/// Base58: `dstH17g8RBGdUo3YeYhSFHDdFzHrWkAzNCKSveAchyD`. These are its 32 raw bytes.
+pub const FIXTURE_DEST_PUBKEY: [u8; 32] =
+    hex!("097271a50fa501a5658a19ee58e6fa6d2bdc786a62d39bb5e4bf243f4561d144");
+/// Fixture amounts, in lamports.
+pub const FIXTURE_TOTAL_AMOUNT: u64 = 9_000_000_000;
+pub const FIXTURE_CHUNKS: [u64; MAX_CHUNKS] = [2_000_000_000, 3_000_000_000, 4_000_000_000];
+pub const FIXTURE_STEP: usize = 0;
+/// Seed for the deterministic test KZG setup and the prover RNG.
+pub const FIXTURE_SEED: [u8; 32] = [0x53; 32];
+
+/// The witness the checked-in `fixtures/*.bin` files are generated from.
+/// All three destinations are the same real public key, mapped to a field value with
+/// `convert_pubkey_32bytes_to_fr`.
+pub fn build_fixture_input() -> ProverInput<PROD_TREE_DEPTH> {
+    let dest_address = convert_pubkey_32bytes_to_fr(FIXTURE_DEST_PUBKEY);
+    build_test_input(
+        FIXTURE_CHUNKS.map(Fr::from),
+        Fr::from(FIXTURE_TOTAL_AMOUNT),
+        [dest_address; MAX_CHUNKS],
+        FIXTURE_STEP,
+    )
+}
+
+/// Witness for a deposit that is the only leaf of an otherwise empty tree.
 pub fn build_test_input<const TREE_DEPTH: usize>(
     chunks: [Fr; MAX_CHUNKS],
     total_amount: Fr,
+    addresses: [Fr; MAX_CHUNKS],
     step_idx: usize,
 ) -> ProverInput<TREE_DEPTH> {
     let s = Fr::from(1_234_567_890);
-    let addresses = [Fr::from(1001), Fr::from(1002), Fr::from(1003)];
     let step = Fr::from(step_idx as u64);
     let user_hash = full_circuit::user_commitment_hash(s, &chunks, &addresses);
     let deposit_commitment = full_circuit::deposit_commitment_hash(user_hash, total_amount);

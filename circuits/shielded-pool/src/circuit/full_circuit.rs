@@ -150,8 +150,17 @@ mod tests {
 
     impl TestCase<TEST_TREE_DEPTH> {
         fn new(chunks: [Fr; MAX_CHUNKS], total_amount: Fr, step_idx: usize) -> Self {
-            let s = Fr::from(1234567890);
             let addresses = [Fr::from(1001), Fr::from(1002), Fr::from(1003)];
+            Self::new_with_addresses(chunks, total_amount, addresses, step_idx)
+        }
+
+        fn new_with_addresses(
+            chunks: [Fr; MAX_CHUNKS],
+            total_amount: Fr,
+            addresses: [Fr; MAX_CHUNKS],
+            step_idx: usize,
+        ) -> Self {
+            let s = Fr::from(1234567890);
             let step = Fr::from(step_idx as u64);
             let commitment =
                 calculate_user_and_deposit_commitment_hash(s, &chunks, &addresses, total_amount);
@@ -224,6 +233,31 @@ mod tests {
         for step_idx in 0..MAX_CHUNKS {
             let tc = TestCase::new_with_step(step_idx);
             assert!(run_test_case(&tc).is_ok());
+        }
+    }
+
+    // Lamport-sized amounts and three different real public keys (mapped with
+    // convert_pubkey_32bytes_to_fr). Each step must select its own chunk and its own key.
+    #[test]
+    fn test_full_circuit_lamports_and_distinct_pubkeys_all_steps() {
+        use crate::circuit::prover::FIXTURE_DEST_PUBKEY;
+        use crate::circuit::utils::convert_pubkey_32bytes_to_fr;
+
+        let chunks = [2_000_000_000u64, 3_000_000_000, 4_000_000_000].map(Fr::from);
+        let total_amount = Fr::from(9_000_000_000u64);
+        let counting: [u8; 32] = std::array::from_fn(|i| i as u8 + 1); // 01 02 .. 20
+        let addresses =
+            [FIXTURE_DEST_PUBKEY, counting, [0xff; 32]].map(convert_pubkey_32bytes_to_fr);
+        assert!(addresses[0] != addresses[1] && addresses[1] != addresses[2]);
+
+        for step_idx in 0..MAX_CHUNKS {
+            let tc = TestCase::new_with_addresses(chunks, total_amount, addresses, step_idx);
+            assert!(run_test_case(&tc).is_ok(), "step {step_idx} should verify");
+
+            // the key of the next step is a real deposit key, but not addresses[step]
+            let mut wrong = TestCase::new_with_addresses(chunks, total_amount, addresses, step_idx);
+            wrong.dest_address = addresses[(step_idx + 1) % MAX_CHUNKS];
+            assert!(run_test_case(&wrong).is_err(), "step {step_idx} wrong key");
         }
     }
 

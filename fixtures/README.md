@@ -20,6 +20,26 @@ Public input order:
 [step, chunk_amount, dest_address, nullifier, root]
 ```
 
+## Witness values
+
+The values come from `build_fixture_input` in `circuits/shielded-pool/src/circuit/prover.rs`:
+
+| Value | Setting |
+| --- | --- |
+| secret `s` | `1_234_567_890` |
+| total amount | `9_000_000_000` lamports |
+| chunks | `[2_000_000_000, 3_000_000_000, 4_000_000_000]` lamports |
+| destinations | `dstH17g8RBGdUo3YeYhSFHDdFzHrWkAzNCKSveAchyD` for all three chunks. Each is mapped to a field value with `convert_pubkey_32bytes_to_fr`. |
+| step | `0` |
+| tree | depth 20. The deposit commitment is the only leaf, at index 0. |
+| setup and prover seed | `[0x53; 32]` |
+
+So the public inputs are step `0`, chunk amount `2_000_000_000`, the hash of the destination key, `nullifier = Poseidon(s, 0)`, and the depth-20 root.
+
+Using one key for all three chunks means this fixture does not test choosing between different destinations. The circuit tests in `full_circuit.rs` and `tests/gwc_end_to_end.rs` use three different destinations for that.
+
+`tests/fixture_verifies.rs` checks that the checked-in `public_inputs.bin` matches these values. Changing the values or the witness does not change `vk.bin` or `kzg_vk.bin`, because the circuit and the setup seed stay the same.
+
 `fixture.bin` format:
 
 ```text
