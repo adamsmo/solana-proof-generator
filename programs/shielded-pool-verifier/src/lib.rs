@@ -196,7 +196,7 @@ mod entry {
 mod tests {
     use super::*;
 
-    const FIXTURE: &[u8] = include_bytes!("../../../fixtures/fixture.bin");
+    const FIXTURE: &[u8] = include_bytes!("../../../fixtures/step0/fixture.bin");
 
     #[test]
     fn host_run_accepts_fixture() {

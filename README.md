@@ -20,7 +20,7 @@ With Rust and the Solana SBF toolchain installed, this repository runs the compl
 
 The command runs these steps in order:
 
-1. Generates deterministic test KZG parameters, PK, VK, proof and public inputs.
+1. Generates deterministic test KZG parameters, PK, VK, and the proof and public inputs for withdrawal steps 0, 1 and 2.
 2. Compiles the Halo2 VK into the flat format used by the Solana verifier.
 3. Verifies the generated proof on the host.
 4. Runs the verifier, circuit, VK compiler and fixture tests.
@@ -84,7 +84,7 @@ cargo-build-sbf --version
 - `fixtures`: generated binary artifacts
 - `scripts/verify.sh`: generation, host tests, SBF build and Mollusk tests
 
-The wrapper accepts instruction tag `0` and one read-only account containing `fixture.bin`. The account contains only the proof and public inputs. The circuit VK and KZG VK are compiled into the SBF program with `include_bytes!`, so a caller cannot replace them with keys for another circuit.
+The wrapper accepts instruction tag `0` and one read-only account containing a packed `fixture.bin` (for example `fixtures/step0/fixture.bin`). The account contains only the proof and public inputs. The circuit VK and KZG VK are compiled into the SBF program with `include_bytes!`, so a caller cannot replace them with keys for another circuit.
 
 ## Generate the binary artifacts
 
@@ -111,7 +111,10 @@ The generator performs these steps:
 4. Creates a BN254/KZG/GWC proof with the Solana Keccak transcript.
 5. Verifies the proof with the native Halo2 verifier.
 6. Compiles the VK to the flat format used by the Solana verifier.
-7. Writes all five files and verifies them with `halo2-solana-verifier` on the host.
+7. Verifies the proof with `halo2-solana-verifier` on the host.
+8. Writes the proof, public inputs and packed `fixture.bin` to `step{N}/`, and the shared `vk.bin` and `kzg_vk.bin` once.
+
+Steps 1 to 8 run in one loop for each withdrawal step `0`, `1` and `2` of the same deposit. Every step must produce the same circuit VK and KZG VK, otherwise the generator stops. The optional argument is the output directory; it defaults to `fixtures`.
 
 The deterministic setup is for repeatable tests only. Production artifacts must use the production circuit and trusted SRS.
 
@@ -119,11 +122,13 @@ The deterministic setup is for repeatable tests only. Production artifacts must 
 
 | File | Bytes | Used for |
 | --- | ---: | --- |
-| `fixtures/vk.bin` | 749 | Circuit-specific verifier protocol. Compiled once into the SBF program. |
-| `fixtures/kzg_vk.bin` | 320 | Trimmed KZG verifier key: `[1]_1 || [1]_2 || [tau]_2`. Compiled once into the SBF program. |
-| `fixtures/proof.bin` | 1088 | GWC proof for the current witness. Changes for each new proof. |
-| `fixtures/public_inputs.bin` | 160 | Five canonical BN254 scalar field elements, 32 bytes each. |
-| `fixtures/fixture.bin` | 1264 | Packed proof and public inputs placed in the proof-data account. |
+| `fixtures/vk.bin` | 749 | Circuit-specific verifier protocol. Shared by all steps. Compiled once into the SBF program. |
+| `fixtures/kzg_vk.bin` | 320 | Trimmed KZG verifier key: `[1]_1 \|\| [1]_2 \|\| [tau]_2`. Shared by all steps. Compiled once into the SBF program. |
+| `fixtures/step{N}/proof.bin` | 1088 | GWC proof for withdrawal step `N`. Changes for each new proof. |
+| `fixtures/step{N}/public_inputs.bin` | 160 | Five canonical BN254 scalar field elements, 32 bytes each. |
+| `fixtures/step{N}/fixture.bin` | 1264 | Packed proof and public inputs placed in the proof-data account. |
+
+`N` is `0`, `1` or `2`: the three chunk withdrawals of one 9 SOL deposit. The SBF wrapper unit tests and the Mollusk tests use `fixtures/step0/fixture.bin`. See [`fixtures/README.md`](fixtures/README.md) for the witness values of each step.
 
 These sizes were produced by the checked-in generator. A different circuit can produce a different VK or proof size.
 
@@ -137,7 +142,7 @@ The public input order is:
 
 The binary VK is the format parsed directly by `crates/verifier/src/vk.rs`. It is compact, deterministic and does not require Borsh, Serde or JSON in the SBF program.
 
-`vk.bin` and `kzg_vk.bin` add 1069 raw bytes to the deployed program data. They are not sent again with every proof. The current `fixture.bin` is 1264 bytes. The previous format also carried both keys in the proof-data account and was 2337 bytes, so pinning the keys removes 1073 bytes from each proof payload.
+`vk.bin` and `kzg_vk.bin` add 1069 raw bytes to the deployed program data. They are not sent again with every proof. Each step's `fixture.bin` is 1264 bytes. The previous format also carried both keys in the proof-data account and was 2337 bytes, so pinning the keys removes 1073 bytes from each proof payload.
 
 The verifier still parses the pinned VK during each verification. The binary format keeps that parser small and avoids a general-purpose serialization layer. Replacing it with Rust constants would not remove the cryptographic work and would make the generated interface harder to audit.
 
@@ -202,7 +207,7 @@ Run host tests, including the checked-in proof:
 ./scripts/verify.sh host
 ```
 
-Regenerate the proof, VK and packed fixture:
+Regenerate the shared VKs and the proof, public inputs and packed fixture of every step:
 
 ```sh
 ./scripts/verify.sh generate

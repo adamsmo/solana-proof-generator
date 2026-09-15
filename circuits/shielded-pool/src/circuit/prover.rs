@@ -176,19 +176,13 @@ pub const FIXTURE_DEST_PUBKEY: [u8; 32] =
 /// Fixture amounts, in lamports.
 pub const FIXTURE_TOTAL_AMOUNT: u64 = 9_000_000_000;
 pub const FIXTURE_CHUNKS: [u64; MAX_CHUNKS] = [2_000_000_000, 3_000_000_000, 4_000_000_000];
-pub const FIXTURE_STEP: usize = 0;
 /// Seed for the deterministic test KZG setup and the prover RNG.
 pub const FIXTURE_SEED: [u8; 32] = [0x53; 32];
 
-/// The witness the checked-in `fixtures/*.bin` files are generated from.
+/// The witness for withdrawing chunk `step_idx` of the fixture deposit.
+/// The checked-in `fixtures/step{0,1,2}/*.bin` files are generated from this.
 /// All three destinations are the same real public key, mapped to a field value with
 /// `convert_pubkey_32bytes_to_fr`.
-pub fn build_fixture_input() -> ProverInput<PROD_TREE_DEPTH> {
-    build_fixture_input_for_step(FIXTURE_STEP)
-}
-
-/// Same deposit as `build_fixture_input`, but proving the withdrawal of chunk `step_idx`.
-/// The checked-in `fixtures/step{1,2}/*.bin` files are generated from this.
 pub fn build_fixture_input_for_step(step_idx: usize) -> ProverInput<PROD_TREE_DEPTH> {
     let dest_address = convert_pubkey_32bytes_to_fr(FIXTURE_DEST_PUBKEY);
     build_test_input(
