@@ -13,6 +13,10 @@ All files in this directory are created by `circuits/shielded-pool/src/bin/gener
 | `proof.bin` | 1088 | BN254/KZG/GWC proof produced for the test witness. |
 | `public_inputs.bin` | 160 | Five 32-byte canonical BN254 scalar field elements. |
 | `fixture.bin` | 1264 | Proof-account payload read by the SBF wrapper. It does not duplicate either verifier key. |
+| `step1/proof.bin`, `step2/proof.bin` | 1088 | Proofs for withdrawing chunk 1 and chunk 2 of the same deposit. |
+| `step1/public_inputs.bin`, `step2/public_inputs.bin` | 160 | Public inputs for those proofs. Same order as below. |
+
+The step 1 and step 2 files come from `build_fixture_input_for_step`. The witness is the same as step 0, except for the step. So they verify with the same `vk.bin` and `kzg_vk.bin`, and have the same root. The generator stops if either key differs. The pool program's tests use all three steps to check that the full 9 SOL is paid out.
 
 Public input order:
 

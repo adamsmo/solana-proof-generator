@@ -96,7 +96,7 @@ pub fn generate_test_vector<const TREE_DEPTH: usize>(
     proof_input: ProverInput<TREE_DEPTH>,
     seed: [u8; 32],
 ) -> anyhow::Result<TestVector> {
-    let mut rng = StdRng::from_seed(seed);
+    let mut rng = StdRng::from_seed(seed); // used in blinding
     let params = ParamsKZG::<Bn256>::unsafe_setup(CIRCUIT_K, &mut rng);
     let public_values = vec![
         proof_input.step,
@@ -184,12 +184,18 @@ pub const FIXTURE_SEED: [u8; 32] = [0x53; 32];
 /// All three destinations are the same real public key, mapped to a field value with
 /// `convert_pubkey_32bytes_to_fr`.
 pub fn build_fixture_input() -> ProverInput<PROD_TREE_DEPTH> {
+    build_fixture_input_for_step(FIXTURE_STEP)
+}
+
+/// Same deposit as `build_fixture_input`, but proving the withdrawal of chunk `step_idx`.
+/// The checked-in `fixtures/step{1,2}/*.bin` files are generated from this.
+pub fn build_fixture_input_for_step(step_idx: usize) -> ProverInput<PROD_TREE_DEPTH> {
     let dest_address = convert_pubkey_32bytes_to_fr(FIXTURE_DEST_PUBKEY);
     build_test_input(
         FIXTURE_CHUNKS.map(Fr::from),
         Fr::from(FIXTURE_TOTAL_AMOUNT),
         [dest_address; MAX_CHUNKS],
-        FIXTURE_STEP,
+        step_idx,
     )
 }
 

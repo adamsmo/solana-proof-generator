@@ -1,7 +1,11 @@
 use std::{env, fs, path::PathBuf};
 
-use shielded_pool_circuit::circuit::prover::{
-    build_fixture_input, generate_test_vector, FIXTURE_SEED,
+use shielded_pool_circuit::circuit::{
+    consts::MAX_CHUNKS,
+    prover::{
+        build_fixture_input, build_fixture_input_for_step, generate_test_vector, TestVector,
+        FIXTURE_SEED, FIXTURE_STEP,
+    },
 };
 
 fn main() -> anyhow::Result<()> {
@@ -12,11 +16,8 @@ fn main() -> anyhow::Result<()> {
     fs::create_dir_all(&output_dir)?;
 
     let vector = generate_test_vector(build_fixture_input(), FIXTURE_SEED)?;
+    let public_inputs = flatten_public_inputs(&vector);
 
-    let mut public_inputs = Vec::with_capacity(5 * 32);
-    for value in &vector.public_inputs {
-        public_inputs.extend_from_slice(value);
-    }
     let mut kzg_vk = Vec::with_capacity(320);
     kzg_vk.extend_from_slice(&vector.kzg_vk.g1_one.0);
     kzg_vk.extend_from_slice(&vector.kzg_vk.g2_one.0);
@@ -41,6 +42,48 @@ fn main() -> anyhow::Result<()> {
     println!("kzg_vk={} bytes", kzg_vk.len());
     println!("fixture={} bytes", fixture.len());
 
+    host_verify(&vector)?;
+    println!("step {FIXTURE_STEP}: BN254/GWC host verification=passed");
+
+    // The other steps of the same deposit (step 1 and 2). Only the proof and the public inputs change,
+    // so they share vk.bin and kzg_vk.bin with the step above.
+    for step in (0..MAX_CHUNKS).filter(|step| *step != FIXTURE_STEP) {
+        let step_vector = generate_test_vector(build_fixture_input_for_step(step), FIXTURE_SEED)?;
+        anyhow::ensure!(
+            step_vector.vk_bytes == vector.vk_bytes,
+            "step {step}: circuit vk differs from step {FIXTURE_STEP}"
+        );
+        anyhow::ensure!(
+            step_vector.kzg_vk.g1_one.0 == vector.kzg_vk.g1_one.0
+                && step_vector.kzg_vk.g2_one.0 == vector.kzg_vk.g2_one.0
+                && step_vector.kzg_vk.g2_tau.0 == vector.kzg_vk.g2_tau.0,
+            "step {step}: KZG vk differs from step {FIXTURE_STEP}"
+        );
+
+        let step_dir = output_dir.join(format!("step{step}"));
+        fs::create_dir_all(&step_dir)?;
+        fs::write(step_dir.join("proof.bin"), &step_vector.proof_bytes)?;
+        fs::write(
+            step_dir.join("public_inputs.bin"),
+            flatten_public_inputs(&step_vector),
+        )?;
+
+        host_verify(&step_vector)?;
+        println!("step {step}: BN254/GWC host verification=passed");
+    }
+
+    Ok(())
+}
+
+fn flatten_public_inputs(vector: &TestVector) -> Vec<u8> {
+    let mut public_inputs = Vec::with_capacity(5 * 32);
+    for value in &vector.public_inputs {
+        public_inputs.extend_from_slice(value);
+    }
+    public_inputs
+}
+
+fn host_verify(vector: &TestVector) -> anyhow::Result<()> {
     let verified = halo2_solana_verifier::verify_gwc(
         &vector.vk_bytes,
         &vector.proof_bytes,
@@ -49,7 +92,5 @@ fn main() -> anyhow::Result<()> {
     )
     .map_err(|error| anyhow::anyhow!("Solana GWC verifier: {error:?}"))?;
     anyhow::ensure!(verified, "Solana verifier rejected generated GWC proof");
-
-    println!("BN254/GWC host verification=passed");
     Ok(())
 }
