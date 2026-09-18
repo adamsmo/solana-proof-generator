@@ -1,5 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![forbid(unsafe_code)]
+// Raw Solana syscall FFI (keccak / big_mod_exp) needs `unsafe`. Cryptographic
+// logic stays safe; forbid unsafe when the syscall feature is off.
+#![cfg_attr(not(feature = "solana-syscalls"), forbid(unsafe_code))]
 
 //! halo2-solana-verifier
 //!
@@ -8,11 +10,14 @@
 //! tamper-rejection and Mollusk tests.
 //!
 //! Architecture:
-//!   - On-chain: arkworks-bn254 for Fr/Fq arithmetic + alt_bn128 syscalls
-//!     for G1/pairing, Keccak transcript via sol_keccak256.
+//!   - On-chain: arkworks-bn254 for Fr (scalar field) arithmetic.
+//!     Syscalls for G1/pairing (the Solana runtime also does the base-field
+//!     Fq math inside those syscalls). Keccak and Fr inverse use direct
+//!     Solana syscalls (`sol_keccak256`, `sol_big_mod_exp`), not
+//!     `solana-program` wrappers.
 //!   - Off-chain: same code paths with feature `solana-syscalls` off; the
-//!     syscalls module falls back to host arkworks ops (used for unit tests
-//!     and the prover-side reference verifier).
+//!     syscalls module falls back to host arkworks / sha3 ops (used for unit
+//!     tests and the prover-side reference verifier).
 
 extern crate alloc;
 

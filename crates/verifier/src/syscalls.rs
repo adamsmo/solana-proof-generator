@@ -6,12 +6,15 @@
 //! The upstream `solana_bn254::prelude::*` functions already handle the
 //! `target_os = "solana"` switch internally - on BPF they call the actual
 //! `sol_alt_bn128_group_op` syscall, on host they fall back to arkworks
-//! emulation. We therefore have ONE code path per primitive.
+//! emulation. We therefore have ONE code path per alt_bn128 primitive.
+//!
+//! Keccak uses raw `sol_keccak256` on Solana (via `solana-define-syscall`) and
+//! `sha3` on host - same Poseidon-style split Quasar programs use. This crate
+//! deliberately does not depend on `solana-program`.
 //!
 //! Two compile paths in *this* crate:
-//!   * `solana-syscalls` feature on  → upstream wrappers (BPF + host both work)
-//!   * feature off                   → pure arkworks; used by unit tests that
-//!                                     do not want a solana-program dep tree.
+//!   * `solana-syscalls` feature on  → bn254 wrappers + raw keccak/modexp
+//!   * feature off                   → pure arkworks / sha3 (no Solana deps)
 //!
 
 use crate::Error;
@@ -196,9 +199,31 @@ mod onchain {
         Ok(out.iter().any(|&b| b != 0))
     }
 
-    /// Keccak-256 over `input`. Same syscall on BPF, sha3 emulation on host.
+    /// Keccak-256 over `input`. Raw `sol_keccak256` on Solana; sha3 on host.
     pub fn keccak256(input: &[u8]) -> [u8; 32] {
-        solana_program::keccak::hashv(&[input]).to_bytes()
+        #[cfg(target_os = "solana")]
+        {
+            use solana_define_syscall::definitions::sol_keccak256;
+            let vals: &[&[u8]] = &[input];
+            let mut hash_result = [0u8; 32];
+            // SAFETY: syscall reads `vals` as a slice-of-slices descriptor and
+            // writes exactly 32 bytes into `hash_result`.
+            unsafe {
+                sol_keccak256(
+                    vals as *const _ as *const u8,
+                    vals.len() as u64,
+                    hash_result.as_mut_ptr(),
+                );
+            }
+            hash_result
+        }
+        #[cfg(not(target_os = "solana"))]
+        {
+            use sha3::{Digest, Keccak256};
+            let mut hasher = Keccak256::new();
+            hasher.update(input);
+            hasher.finalize().into()
+        }
     }
 
     // -------- G2 ops - devnet only (SIMD-0302) ---------------------------------

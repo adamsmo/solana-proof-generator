@@ -14,8 +14,10 @@ crate-type = ["lib"]
 
 [features]
 default      = []
-# Use Solana alt_bn128 syscalls (BPF target). Off → fall back to arkworks-only host execution.
-solana-syscalls = ["dep:solana-program", "dep:solana-bn254"]
+# Use Solana alt_bn128 + raw keccak/modexp syscalls (BPF target).
+# Off → fall back to arkworks-only / sha3 host execution.
+# Does not pull solana-program (incompatible with Quasar no_std panic_impl).
+solana-syscalls = ["dep:solana-bn254", "dep:solana-define-syscall"]
 # Optional compatibility flag retained for existing callers.
 devnet-feature-gates = []
 # Route alt_bn128 calls to the SIMD-0284 little-endian syscall variants.
@@ -35,8 +37,8 @@ ark-serialize   = { workspace = true }
 ark-std         = { workspace = true }
 sha3            = { workspace = true }
 
-solana-program  = { workspace = true, optional = true }
-solana-bn254    = { workspace = true, optional = true }
+solana-bn254           = { workspace = true, optional = true }
+solana-define-syscall  = { workspace = true, optional = true }
 
 [dev-dependencies]
 hex             = { workspace = true, features = ["std"] }

@@ -39,7 +39,7 @@ struct FixtureSections {
 }
 
 fn checked_in_fixture() -> Vec<u8> {
-    include_bytes!("../../../fixtures/fixture.bin").to_vec()
+    include_bytes!("../../../fixtures/step0/fixture.bin").to_vec()
 }
 
 fn read_u32_le(bytes: &[u8], offset: usize) -> usize {
@@ -99,7 +99,9 @@ fn run_instruction_with_fixture_and_limit(
         &elf,
     );
     mollusk.compute_budget.compute_unit_limit = compute_unit_limit;
-    mollusk.compute_budget.heap_size = 256 * 1024;
+    // 64 KiB heap is overhead to be optimized later when the full program is built.
+    // Verifier-only: min checked heap size that ran in Mollusk tests was 40 KiB.
+    mollusk.compute_budget.heap_size = 64 * 1024;
 
     let instruction = Instruction {
         program_id,
@@ -178,7 +180,7 @@ fn shielded_pool_gwc_verifies_inside_svm_and_reports_cu() {
     eprintln!("compute_units_consumed={}", result.compute_units_consumed);
     eprintln!(
         "account_payload_bytes={}",
-        include_bytes!("../../../fixtures/fixture.bin").len()
+        include_bytes!("../../../fixtures/step0/fixture.bin").len()
     );
     assert!(matches!(result.program_result, ProgramResult::Success));
 }
