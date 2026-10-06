@@ -222,17 +222,39 @@ pub fn fr_inverse(value: &Fr) -> Option<Fr> {
 
     #[cfg(all(feature = "solana-syscalls", target_os = "solana"))]
     {
-        let result = solana_program::big_mod_exp::big_mod_exp(
-            &fr_to_bytes_be(value),
-            &MODULUS_MINUS_TWO_BE,
-            &MODULUS_BE,
-        );
-        if result.len() != 32 {
-            return None;
+        // Same ABI as solana-big-mod-exp 3.x (what solana-program re-exported):
+        // pass BE limbs through BigModExpParams into sol_big_mod_exp.
+        #[repr(C)]
+        struct BigModExpParams {
+            base: *const u8,
+            base_len: u64,
+            exponent: *const u8,
+            exponent_len: u64,
+            modulus: *const u8,
+            modulus_len: u64,
         }
-        let mut bytes = [0u8; 32];
-        bytes.copy_from_slice(&result);
-        return fr_from_bytes_be(&bytes).ok();
+
+        use solana_define_syscall::definitions::sol_big_mod_exp;
+
+        let base = fr_to_bytes_be(value);
+        let mut result = [0u8; 32];
+        let params = BigModExpParams {
+            base: base.as_ptr(),
+            base_len: base.len() as u64,
+            exponent: MODULUS_MINUS_TWO_BE.as_ptr(),
+            exponent_len: MODULUS_MINUS_TWO_BE.len() as u64,
+            modulus: MODULUS_BE.as_ptr(),
+            modulus_len: MODULUS_BE.len() as u64,
+        };
+        // SAFETY: params point at live 32-byte buffers; syscall writes
+        // modulus_len bytes into `result`.
+        unsafe {
+            sol_big_mod_exp(
+                &params as *const BigModExpParams as *const u8,
+                result.as_mut_ptr(),
+            );
+        }
+        return fr_from_bytes_be(&result).ok();
     }
 
     #[cfg(not(all(feature = "solana-syscalls", target_os = "solana")))]

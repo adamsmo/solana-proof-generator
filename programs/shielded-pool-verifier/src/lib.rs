@@ -2,15 +2,6 @@
 
 extern crate alloc;
 
-pub mod allocator;
-
-#[cfg(all(
-    any(target_os = "solana", target_arch = "bpf"),
-    feature = "bpf-entrypoint"
-))]
-#[global_allocator]
-static A: allocator::FreelistAllocator = allocator::FreelistAllocator::new();
-
 use alloc::vec::Vec;
 use halo2_solana_verifier::{
     curve::{G1, G2},
@@ -70,6 +61,7 @@ fn parse_fixture(data: &[u8]) -> Result<ParsedInput<'_>, u32> {
     if public_input_end != data.len() {
         return Err(errors::PUBLIC_INPUTS_OUT_OF_BOUNDS);
     }
+    // This is making a heap allocation (Vec allocates on heap)
     let mut public_inputs = Vec::with_capacity(public_input_count);
     while cursor < public_input_end {
         let mut value = [0u8; 32];
@@ -159,10 +151,12 @@ fn bench_scalar_mul(instruction_data: &[u8], custom: bool) -> Result<(), u32> {
 #[cfg(feature = "bpf-entrypoint")]
 mod entry {
     use pinocchio::{
-        account::AccountView, address::Address, error::ProgramError, program_entrypoint,
-        ProgramResult,
+        account::AccountView, address::Address, default_allocator, error::ProgramError,
+        program_entrypoint, ProgramResult,
     };
 
+    // set memory allocator to bump allocator (used by pinocchio and quasar)
+    default_allocator!();
     program_entrypoint!(process_instruction);
 
     fn process_instruction(
@@ -180,6 +174,8 @@ mod entry {
 
         match tag {
             super::VERIFY_TAG => {
+                // here we are borrowing the account data not copying it on stack (zero-copy style)
+                // account data contains: H2PF0001 (custom 8 byte tag) + proof + public inputs
                 let data: &[u8] = unsafe { account.borrow_unchecked() };
                 super::run(data).map_err(ProgramError::Custom)
             }
@@ -200,7 +196,7 @@ mod entry {
 mod tests {
     use super::*;
 
-    const FIXTURE: &[u8] = include_bytes!("../../../fixtures/fixture.bin");
+    const FIXTURE: &[u8] = include_bytes!("../../../fixtures/step0/fixture.bin");
 
     #[test]
     fn host_run_accepts_fixture() {
