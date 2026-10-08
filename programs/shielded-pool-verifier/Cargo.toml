@@ -3,7 +3,6 @@ name = "shielded-pool-solana-verifier"
 version = "0.1.0"
 description = "Solana SBF verifier for the shielded-pool Halo2 BN254/GWC circuit"
 edition.workspace = true
-license.workspace = true
 rust-version.workspace = true
 publish = false
 

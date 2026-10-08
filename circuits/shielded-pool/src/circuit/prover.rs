@@ -16,8 +16,13 @@ use halo2_base::{
     },
     halo2_proofs::{
         plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, VerifyingKey},
-        poly::{commitment::Guard, gwc_kzg::GwcKZGCommitmentScheme, kzg::params::ParamsKZG},
+        poly::{
+            commitment::{Guard, Params},
+            gwc_kzg::GwcKZGCommitmentScheme,
+            kzg::params::ParamsKZG,
+        },
         transcript::{CircuitTranscript, Transcript},
+        utils::SerdeFormat,
     },
 };
 use halo2_solana_verifier::{
@@ -32,12 +37,36 @@ use halo2curves::{
 };
 use hex_literal::hex;
 use rand::{rngs::StdRng, SeedableRng};
+use std::{
+    fs::File,
+    io::{BufReader, Read, Seek},
+    path::Path,
+};
 
 pub const BLINDING_FACTOR: usize = 9;
 pub const CIRCUIT_K: u32 = 16;
 
 type GwcKzg = GwcKZGCommitmentScheme<Bn256>;
 type ProofTranscript = CircuitTranscript<SolanaKeccak>;
+
+/// Load checked Halo2 RawBytes parameters.
+pub fn load_srs(path: impl AsRef<Path>) -> anyhow::Result<ParamsKZG<Bn256>> {
+    let mut reader = BufReader::new(File::open(path.as_ref())?);
+    let mut header = [0u8; 4];
+    reader.read_exact(&mut header)?;
+    let k = u32::from_le_bytes(header);
+    anyhow::ensure!(k == CIRCUIT_K, "SRS k={k}, expected k={CIRCUIT_K}");
+    reader.rewind()?;
+    let params = ParamsKZG::<Bn256>::read_custom(&mut reader, SerdeFormat::RawBytes)
+        .map_err(|error| anyhow::anyhow!("reading SRS {}: {error}", path.as_ref().display()))?;
+    anyhow::ensure!(params.max_k() == CIRCUIT_K, "unexpected SRS degree");
+    let mut extra = [0u8; 1];
+    anyhow::ensure!(
+        reader.read(&mut extra)? == 0,
+        "unexpected trailing SRS bytes"
+    );
+    Ok(params)
+}
 
 #[derive(Clone)]
 pub struct ProverInput<const TREE_DEPTH: usize> {
@@ -66,9 +95,9 @@ fn build_circuit<const TREE_DEPTH: usize>(
     stage: CircuitBuilderStage,
     k: u32,
     proof_input: &ProverInput<TREE_DEPTH>,
-    pinned: Option<(BaseCircuitParams, MultiPhaseThreadBreakPoints)>,
+    fixed: Option<(BaseCircuitParams, MultiPhaseThreadBreakPoints)>,
 ) -> BaseCircuitBuilder<Fr> {
-    let mut circuit_builder = match pinned {
+    let mut circuit_builder = match fixed {
         None => BaseCircuitBuilder::<Fr>::from_stage(stage)
             .use_k(k as usize)
             .use_instance_columns(1)
@@ -94,10 +123,14 @@ fn build_circuit<const TREE_DEPTH: usize>(
 
 pub fn generate_test_vector<const TREE_DEPTH: usize>(
     proof_input: ProverInput<TREE_DEPTH>,
+    params: &ParamsKZG<Bn256>,
     seed: [u8; 32],
 ) -> anyhow::Result<TestVector> {
-    let mut rng = StdRng::from_seed(seed); // used in blinding
-    let params = ParamsKZG::<Bn256>::unsafe_setup(CIRCUIT_K, &mut rng);
+    anyhow::ensure!(
+        params.max_k() == CIRCUIT_K,
+        "SRS degree does not match circuit"
+    );
+    let mut rng = StdRng::from_seed(seed); // used only in fixture proof blinding
     let public_values = vec![
         proof_input.step,
         proof_input.chunk_amount,
@@ -111,7 +144,7 @@ pub fn generate_test_vector<const TREE_DEPTH: usize>(
     let mut keygen_circuit =
         build_circuit(CircuitBuilderStage::Keygen, CIRCUIT_K, &proof_input, None);
     let circuit_params = keygen_circuit.calculate_params(Some(BLINDING_FACTOR));
-    let vk = keygen_vk_with_k(&params, &keygen_circuit, CIRCUIT_K)
+    let vk = keygen_vk_with_k(params, &keygen_circuit, CIRCUIT_K)
         .map_err(|error| anyhow::anyhow!("keygen_vk_with_k: {error:?}"))?;
     let pk =
         keygen_pk(vk, &keygen_circuit).map_err(|error| anyhow::anyhow!("keygen_pk: {error:?}"))?;
@@ -125,7 +158,7 @@ pub fn generate_test_vector<const TREE_DEPTH: usize>(
     );
     let mut transcript = ProofTranscript::init();
     create_proof::<Fr, GwcKzg, _, _>(
-        &params,
+        params,
         &pk,
         &[prover_circuit],
         &[public_instance_refs.as_slice()],
@@ -146,7 +179,7 @@ pub fn generate_test_vector<const TREE_DEPTH: usize>(
         .verify(&params.verifier_params())
         .map_err(|error| anyhow::anyhow!("native GWC verify: {error:?}"))?;
 
-    let vk_bytes = compile_vk(&params, pk.get_vk())
+    let vk_bytes = compile_vk(params, pk.get_vk())
         .map_err(|error| anyhow::anyhow!("compile_vk: {error:?}"))?;
     let public_inputs: [[u8; 32]; 5] = public_values
         .iter()
@@ -176,7 +209,7 @@ pub const FIXTURE_DEST_PUBKEY: [u8; 32] =
 /// Fixture amounts, in lamports.
 pub const FIXTURE_TOTAL_AMOUNT: u64 = 9_000_000_000;
 pub const FIXTURE_CHUNKS: [u64; MAX_CHUNKS] = [2_000_000_000, 3_000_000_000, 4_000_000_000];
-/// Seed for the deterministic test KZG setup and the prover RNG.
+/// Seed for deterministic fixture proof blinding; not used to generate the SRS.
 pub const FIXTURE_SEED: [u8; 32] = [0x53; 32];
 
 /// The witness for withdrawing chunk `step_idx` of the fixture deposit.

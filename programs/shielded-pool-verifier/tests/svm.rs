@@ -130,6 +130,23 @@ fn verify_fixture(fixture: &[u8]) -> InstructionResult {
     run_instruction_with_fixture_and_limit(vec![VERIFY_TAG], fixture, SOLANA_TRANSACTION_CU_LIMIT)
 }
 
+#[test]
+fn shielded_pool_gwc_verifies_all_withdrawal_steps_with_fixed_keys() {
+    let fixtures: [&[u8]; 3] = [
+        include_bytes!("../../../fixtures/step0/fixture.bin"),
+        include_bytes!("../../../fixtures/step1/fixture.bin"),
+        include_bytes!("../../../fixtures/step2/fixture.bin"),
+    ];
+    for (step, fixture) in fixtures.iter().enumerate() {
+        let result = verify_fixture(fixture);
+        assert!(
+            matches!(result.program_result, ProgramResult::Success),
+            "withdrawal step {step} rejected with the fixed keys"
+        );
+        assert!(result.compute_units_consumed <= SOLANA_TRANSACTION_CU_LIMIT);
+    }
+}
+
 fn assert_custom_error(result: &InstructionResult, expected: u32) {
     assert_eq!(
         result.raw_result,

@@ -4,6 +4,10 @@ This repository verifies a Halo2 BN254/KZG proof with the GWC multi-opening sche
 
 The on-chain program does not store nullifiers, update a Merkle root, move funds or manage application state. That logic belongs in the calling Solana program.
 
+## Circuit attribution
+
+The shielded-pool circuit under `circuits/shielded-pool/src/circuit` was authored by [gwalen](https://github.com/gwalen) and is adapted from [gwalen/zk-shielded-pool](https://github.com/gwalen/zk-shielded-pool). This repository adds the off-chain proof generator, VK compiler, Rust verifier, Solana SBF wrapper, integration tests and documentation around that circuit.
+
 ## AI-assisted integration
 
 This repository was assembled with help from OpenAI GPT-5.6 Sol. The model was used as an integration and translation assistant: connecting existing Halo2, BN254/KZG, Rust and Solana components, translating existing verifier logic and binary layouts from earlier Aiken/Haskell work into Rust and Solana SBF conventions, explaining the code, and helping with glue code, tests and documentation.
@@ -20,7 +24,7 @@ With Rust and the Solana SBF toolchain installed, this repository runs the compl
 
 The command runs these steps in order:
 
-1. Generates deterministic test KZG parameters, PK, VK, and the proof and public inputs for withdrawal steps 0, 1 and 2.
+1. Loads the public BN254 KZG SRS and generates PK, VK, proofs and public inputs for withdrawal steps 0, 1 and 2.
 2. Compiles the Halo2 VK into the flat format used by the Solana verifier.
 3. Verifies the generated proof on the host.
 4. Runs the verifier, circuit, VK compiler and fixture tests.
@@ -28,7 +32,7 @@ The command runs these steps in order:
 6. Runs the program inside Mollusk and reaches the final BN254 pairing check.
 7. Runs the proof and public-input tamper tests.
 
-All project-specific source needed for this test flow is in this repository. On the first build, Cargo downloads the locked crates and pinned Git dependencies from `Cargo.lock`. Rust, Git, a native linker and the Solana toolchain are installed separately.
+All project-specific source needed for this test flow is in this repository. On the first build, Cargo downloads the locked crates and Git dependencies at fixed revisions from `Cargo.lock`. Rust, Git, a native linker and the Solana toolchain are installed separately.
 
 This flow generates and verifies the checked-in test witness. It does not deploy the program to a cluster, accept an arbitrary witness through a CLI, or implement nullifier storage and payouts.
 
@@ -77,7 +81,7 @@ cargo-build-sbf --version
 ## Repository layout
 
 - `crates/verifier`: `no_std` BN254/GWC verifier and the `verify_gwc` API. On-chain path uses `solana-bn254` plus raw `sol_keccak256` / `sol_big_mod_exp` via `solana-define-syscall` (no `solana-program`, so Quasar/`no_std` callers can link it)
-- `programs/shielded-pool-verifier`: minimal SBF wrapper with a pinned circuit VK and KZG VK
+- `programs/shielded-pool-verifier`: minimal SBF wrapper with a fixed circuit VK and KZG VK
 - `circuits/shielded-pool`: off-chain circuit, prover and fixture generator
 - `crates/vk-host`: off-chain compiler from the Halo2 `VerifyingKey` to the flat on-chain VK format
 - `vendor/halo2-base`: source required to build the original circuit and generator
@@ -103,20 +107,28 @@ RUSTC_BOOTSTRAP=1 cargo run --release \
   -- fixtures
 ```
 
+The default SRS is `srs/kzg_bn254_16.srs`, distributed by [Axiom](https://axiom-crypto.s3.amazonaws.com/challenge_0085/kzg_bn254_16.srs). The generator reads it in the IOG Halo2 `RawBytes` format and requires `k = 16`. To use another file, pass its path as the second generator argument after `fixtures`, or set `SRS_PATH`. The script also accepts `SRS_PATH`:
+
+```sh
+SRS_PATH=/path/to/kzg_bn254_16.srs ./scripts/verify.sh generate
+```
+
 The generator performs these steps:
 
-1. Builds the shielded-pool circuit with `k = 16` and blinding factor `9`.
-2. Creates deterministic test KZG parameters with `ParamsKZG::unsafe_setup` and seed `[0x53; 32]`.
+1. Loads one SRS with `ParamsKZG::read_custom(..., SerdeFormat::RawBytes)` and reuses it for all fixture steps.
+2. Builds the shielded-pool circuit with `k = 16` and blinding factor `9`, using `build_fixture_input_for_step(N)` for each withdrawal step.
 3. Generates the Halo2 VK and proving key.
 4. Creates a BN254/KZG/GWC proof with the Solana Keccak transcript.
 5. Verifies the proof with the native Halo2 verifier.
 6. Compiles the VK to the flat format used by the Solana verifier.
-7. Verifies the proof with `halo2-solana-verifier` on the host.
-8. Writes the proof, public inputs and packed `fixture.bin` to `step{N}/`, and the shared `vk.bin` and `kzg_vk.bin` once.
+7. Verifies every proof with `halo2-solana-verifier` on the host and checks that all steps produce the same circuit VK and KZG VK.
+8. Writes the proof, public inputs and packed `fixture.bin` to `step{N}/`, and the shared `vk.bin` and `kzg_vk.bin` once, after all steps pass verification and the key checks.
 
-Steps 1 to 8 run in one loop for each withdrawal step `0`, `1` and `2` of the same deposit. Every step must produce the same circuit VK and KZG VK, otherwise the generator stops. The optional argument is the output directory; it defaults to `fixtures`.
+The SRS is loaded once. Steps 2 to 7 run for each withdrawal step `0`, `1` and `2` of the same deposit, before any files are written. The optional first argument is the output directory; it defaults to `fixtures`.
 
-The deterministic setup is for repeatable tests only. Production artifacts must use the production circuit and trusted SRS.
+The previous generator called `generate_test_vector(input, [0x53; 32])`, which initialized `StdRng::from_seed(seed)` and passed that RNG to `ParamsKZG::unsafe_setup`. Because the seed was fixed and public, anyone could repeat the call and reproduce the setup secret `s` (`tau`). `unsafe_setup` does not require a fixed seed; it uses the RNG supplied by the caller. The generator now loads the public SRS and uses the seed only for fixture proof blinding.
+
+Protecting witness privacy requires fresh, unpredictable randomness for proof blinding. The generated witnesses remain test data.
 
 ## Generated files
 
@@ -128,9 +140,11 @@ The deterministic setup is for repeatable tests only. Production artifacts must 
 | `fixtures/step{N}/public_inputs.bin` | 160 | Five canonical BN254 scalar field elements, 32 bytes each. |
 | `fixtures/step{N}/fixture.bin` | 1264 | Packed proof and public inputs placed in the proof-data account. |
 
-`N` is `0`, `1` or `2`: the three chunk withdrawals of one 9 SOL deposit. The SBF wrapper unit tests and the Mollusk tests use `fixtures/step0/fixture.bin`. See [`fixtures/README.md`](fixtures/README.md) for the witness values of each step.
+`N` is `0`, `1` or `2`: the three chunk withdrawals of one 9 SOL deposit. The SBF wrapper unit tests and Mollusk tamper tests use `fixtures/step0/fixture.bin`; a separate Mollusk test verifies all three steps. See [`fixtures/README.md`](fixtures/README.md) for the witness values of each step.
 
 These sizes were produced by the checked-in generator. A different circuit can produce a different VK or proof size.
+
+`vk.bin` and `kzg_vk.bin` are shared by all steps and stay at the top of `fixtures`. Proofs, public inputs and packed fixtures exist only in `fixtures/step0`, `fixtures/step1` and `fixtures/step2`. The proof-account format remains `H2PF0001`, with the keys fixed in the program.
 
 The public input order is:
 
@@ -142,11 +156,11 @@ The public input order is:
 
 The binary VK is the format parsed directly by `crates/verifier/src/vk.rs`. It is compact, deterministic and does not require Borsh, Serde or JSON in the SBF program.
 
-`vk.bin` and `kzg_vk.bin` add 1069 raw bytes to the deployed program data. They are not sent again with every proof. Each step's `fixture.bin` is 1264 bytes. The previous format also carried both keys in the proof-data account and was 2337 bytes, so pinning the keys removes 1073 bytes from each proof payload.
+`vk.bin` and `kzg_vk.bin` add 1069 raw bytes to the deployed program data. They are not sent again with every proof. Each step's `fixture.bin` is 1264 bytes. The previous format also carried both keys in the proof-data account and was 2337 bytes, so embedding the fixed keys removes 1073 bytes from each proof payload.
 
-The verifier still parses the pinned VK during each verification. The binary format keeps that parser small and avoids a general-purpose serialization layer. Replacing it with Rust constants would not remove the cryptographic work and would make the generated interface harder to audit.
+The verifier still parses the fixed VK during each verification. The binary format keeps that parser small and avoids a general-purpose serialization layer. Replacing it with Rust constants would not remove the cryptographic work and would make the generated interface harder to audit.
 
-For a new proof using the same circuit and SRS, regenerate only the proof and public inputs. If the circuit shape or SRS changes, regenerate all artifacts, rebuild the SBF program and redeploy it because the pinned keys change.
+For a new proof using the same circuit and SRS, regenerate only the proof and public inputs. If the circuit shape or SRS changes, regenerate all artifacts, rebuild the SBF program and redeploy it because the fixed keys change.
 
 ## Proof account format
 
@@ -175,14 +189,14 @@ Add a path dependency:
 halo2-solana-verifier = { path = "../halo2-solana-verifier/crates/verifier", default-features = false, features = ["solana-syscalls"] }
 ```
 
-Call it with keys pinned by your application:
+Call it with your application's fixed keys:
 
 ```rust
 let accepted = halo2_solana_verifier::verify_gwc(
-    pinned_vk,
+    fixed_vk,
     proof,
     public_inputs,
-    &pinned_kzg_vk,
+    &fixed_kzg_vk,
 )
 .map_err(|_| MyProgramError::ProofVerifierFailed)?;
 
@@ -191,7 +205,7 @@ if !accepted {
 }
 ```
 
-The application must also pin the public input schema. The verifier checks only the proof equation and cannot decide what each field means.
+The application must also use a fixed public input schema. The verifier checks only the proof equation and cannot decide what each field means.
 
 ### Call the minimal verifier program through CPI
 
@@ -246,4 +260,4 @@ Solana references:
 
 ## License
 
-Licensed under MIT or Apache-2.0. Original and vendored notices are listed in [NOTICE.md](NOTICE.md).
+The shielded-pool circuit is adapted from [gwalen/zk-shielded-pool](https://github.com/gwalen/zk-shielded-pool). Check that repository for the license applicable to the circuit code. The vendored halo2-base license is in [vendor/halo2-base/LICENSE](vendor/halo2-base/LICENSE).

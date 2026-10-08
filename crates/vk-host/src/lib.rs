@@ -16,7 +16,7 @@
 //!         OR write into a PDA account for multi-VK routing
 //! ```
 //!
-//! `transcript_repr` (Halo2's Blake2b("Halo2-Verify-Key" ‖ pinned-VK) digest)
+//! `transcript_repr` (Halo2's Blake2b("Halo2-Verify-Key" ‖ fixed-VK) digest)
 //! is read directly from `vk.transcript_repr()` - already pre-computed by
 //! halo2 during `keygen_vk`. The on-chain verifier never needs Blake2b.
 

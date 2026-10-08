@@ -3,7 +3,6 @@ name        = "halo2-solana-verifier"
 version     = "0.1.0"
 description = "no_std Halo2 BN254/KZG verifier with a tested GWC path for Solana SBF"
 edition.workspace      = true
-license.workspace      = true
 rust-version.workspace = true
 readme        = "../../README.md"
 keywords      = ["solana", "halo2", "zkp", "bn254", "kzg"]

@@ -2,7 +2,9 @@ use std::{env, fs, path::PathBuf};
 
 use shielded_pool_circuit::circuit::{
     consts::MAX_CHUNKS,
-    prover::{build_fixture_input_for_step, generate_test_vector, TestVector, FIXTURE_SEED},
+    prover::{
+        build_fixture_input_for_step, generate_test_vector, load_srs, TestVector, FIXTURE_SEED,
+    },
 };
 
 fn main() -> anyhow::Result<()> {
@@ -10,25 +12,30 @@ fn main() -> anyhow::Result<()> {
         .nth(1)
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("fixtures"));
-    fs::create_dir_all(&output_dir)?;
+    let srs_path = env::args()
+        .nth(2)
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("SRS_PATH").map(PathBuf::from))
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../srs/kzg_bn254_16.srs")
+        });
+    let params = load_srs(&srs_path)?;
 
-    // Every step proves a withdrawal from the same deposit with the same circuit and setup seed,
+    // Every step proves a withdrawal from the same deposit with the same circuit and SRS,
     // so all steps share vk.bin and kzg_vk.bin. They are taken from the first step and
     // every step must reproduce them.
     let mut shared_keys: Option<(Vec<u8>, Vec<u8>)> = None;
+    let mut vectors = Vec::with_capacity(MAX_CHUNKS);
 
     for step in 0..MAX_CHUNKS {
-        let vector = generate_test_vector(build_fixture_input_for_step(step), FIXTURE_SEED)?;
+        let vector =
+            generate_test_vector(build_fixture_input_for_step(step), &params, FIXTURE_SEED)?;
         host_verify(&vector)?;
 
         let vk = &vector.vk_bytes;
         let kzg_vk = flatten_kzg_vk(&vector);
         match &shared_keys {
             None => {
-                fs::write(output_dir.join("vk.bin"), vk)?;
-                fs::write(output_dir.join("kzg_vk.bin"), &kzg_vk)?;
-                println!("vk={} bytes", vk.len());
-                println!("kzg_vk={} bytes", kzg_vk.len());
                 shared_keys = Some((vk.clone(), kzg_vk));
             }
             Some((shared_vk, shared_kzg_vk)) => {
@@ -43,7 +50,18 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
-        let public_inputs = flatten_public_inputs(&vector);
+        vectors.push(vector);
+    }
+
+    // Only write artifacts after all steps verify with the same keys.
+    fs::create_dir_all(&output_dir)?;
+    let (vk, kzg_vk) = shared_keys.expect("at least one withdrawal step");
+    fs::write(output_dir.join("vk.bin"), &vk)?;
+    fs::write(output_dir.join("kzg_vk.bin"), &kzg_vk)?;
+    println!("vk={} bytes", vk.len());
+    println!("kzg_vk={} bytes", kzg_vk.len());
+    for (step, vector) in vectors.iter().enumerate() {
+        let public_inputs = flatten_public_inputs(vector);
         let fixture = pack_fixture(&vector.proof_bytes, &public_inputs);
 
         let step_dir = output_dir.join(format!("step{step}"));

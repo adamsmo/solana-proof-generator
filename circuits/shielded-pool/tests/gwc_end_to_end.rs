@@ -1,7 +1,7 @@
 use shielded_pool_circuit::{
     circuit::{
         consts::{MAX_CHUNKS, PROD_TREE_DEPTH},
-        prover::{build_test_input, generate_test_vector, FIXTURE_SEED},
+        prover::{build_test_input, generate_test_vector, load_srs, FIXTURE_SEED},
     },
     Fr,
 };
@@ -13,7 +13,13 @@ fn shielded_pool_bn254_gwc_verifies_and_rejects_tampering() {
     // same key. The proof then has to pick addresses[step], not just any of them.
     let addresses: [Fr; MAX_CHUNKS] = [Fr::from(1001), Fr::from(1002), Fr::from(1003)];
     let input = build_test_input::<PROD_TREE_DEPTH>(chunks, Fr::from(9), addresses, 0);
-    let vector = generate_test_vector(input, FIXTURE_SEED).unwrap();
+    let srs_path = std::env::var_os("SRS_PATH")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../srs/kzg_bn254_16.srs")
+        });
+    let params = load_srs(srs_path).unwrap();
+    let vector = generate_test_vector(input, &params, FIXTURE_SEED).unwrap();
 
     assert!(halo2_solana_verifier::verify_gwc(
         &vector.vk_bytes,

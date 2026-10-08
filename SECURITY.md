@@ -6,7 +6,7 @@ It does not decide whether a nullifier was already used, whether a Merkle root i
 
 The minimal SBF wrapper pins the checked-in VK and KZG VK. A program that calls `verify_gwc` directly must provide the same protection itself. It must also bind every public input to the application instruction and account state before making any state change.
 
-The checked-in test vector and `generate-shielded-pool-fixture` binary use deterministic `ParamsKZG::unsafe_setup`. They exist only for repeatable tests. Replace the setup step with the production trusted SRS, then regenerate the VK, KZG VK and proof before using the verifier with real assets.
+The fixture generator loads the public BN254 KZG SRS from `srs/kzg_bn254_16.srs`, distributed by [Axiom](https://axiom-crypto.s3.amazonaws.com/challenge_0085/kzg_bn254_16.srs).
 
 The SBF wrapper embeds `fixtures/vk.bin` and `fixtures/kzg_vk.bin` at build time. Any circuit or SRS change requires regeneration, a new SBF build and redeployment. A new proof for the unchanged circuit and SRS does not require redeployment.
 

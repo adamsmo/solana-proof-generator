@@ -10,7 +10,7 @@ export CARGO_TARGET_DIR="${target_dir}"
 host_tests() {
   cargo test -p halo2-solana-verifier --features std,solana-syscalls
   RUSTC_BOOTSTRAP=1 cargo test -p halo2-solana-vk-host --lib
-  RUSTC_BOOTSTRAP=1 cargo test -p shielded-pool-circuit --lib --test fixture_verifies
+  RUSTC_BOOTSTRAP=1 cargo test -p shielded-pool-circuit --lib --test fixture_verifies --test gwc_end_to_end
   cargo test -p shielded-pool-solana-verifier --lib
 }
 
@@ -18,7 +18,7 @@ generate_fixtures() {
   RUSTC_BOOTSTRAP=1 cargo run --release \
     -p shielded-pool-circuit \
     --bin generate-shielded-pool-fixture \
-    -- "${repo_dir}/fixtures"
+    -- "${repo_dir}/fixtures" "${SRS_PATH:-${repo_dir}/srs/kzg_bn254_16.srs}"
 }
 
 build_sbf() {

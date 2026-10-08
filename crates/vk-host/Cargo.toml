@@ -3,7 +3,6 @@ name        = "halo2-solana-vk-host"
 version     = "0.1.0"
 description = "Off-chain compiler: PSE Halo2 VerifyingKey to on-chain flat VK bytes for halo2-solana-verifier"
 edition.workspace      = true
-license.workspace      = true
 rust-version.workspace = true
 readme        = "../../README.md"
 # Not publishable to crates.io: depends on `halo2_proofs` from PSE's git fork

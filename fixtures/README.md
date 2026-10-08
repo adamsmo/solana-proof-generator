@@ -20,9 +20,11 @@ fixtures/step2/{proof.bin,public_inputs.bin,fixture.bin}
 | `kzg_vk.bin` | 320 | `[1]_1` as 64 bytes, `[1]_2` as 128 bytes and `[tau]_2` as 128 bytes. Embedded in the SBF wrapper. Shared by all steps. |
 | `step{N}/proof.bin` | 1088 | BN254/KZG/GWC proof for withdrawing chunk `N` of the fixture deposit. |
 | `step{N}/public_inputs.bin` | 160 | Five 32-byte canonical BN254 scalar field elements for that proof. |
-| `step{N}/fixture.bin` | 1264 | Proof-account payload for that step. It does not duplicate either verifier key. The SBF wrapper unit tests and Mollusk tests use `step0/fixture.bin`. |
+| `step{N}/fixture.bin` | 1264 | Proof-account payload for that step, without either verifier key. SBF wrapper unit tests and Mollusk tamper tests use step 0; a separate Mollusk test verifies all three steps. |
 
-Every step is generated, host-verified and written by the same loop, from `build_fixture_input_for_step(N)` for `N` in `0..MAX_CHUNKS`. The witness is the same for all steps except for the step, so all steps verify with the same `vk.bin` and `kzg_vk.bin` and have the same root. The keys are written once from step 0, and the generator stops if any later step produces a different key. The pool program's tests use all three steps to check that the full 9 SOL is paid out.
+The generator uses `build_fixture_input_for_step(N)` for `N` in `0..MAX_CHUNKS` and the same loaded SRS for every step. All steps use the same private deposit witness and root, while `step`, `chunk_amount` and `nullifier` change. The circuit shape and SRS stay the same, so the verifier keys are shared.
+
+The generator verifies every proof on the host and checks the shared keys before writing any files. It takes the keys from step 0 and writes them once. These fixtures describe the three chunk withdrawals of a 9 SOL deposit; this repository verifies their proofs and does not execute payouts.
 
 Public input order:
 
@@ -42,7 +44,7 @@ The values come from `build_fixture_input_for_step` in `circuits/shielded-pool/s
 | destinations | `dstH17g8RBGdUo3YeYhSFHDdFzHrWkAzNCKSveAchyD` for all three chunks. Each is mapped to a field value with `convert_pubkey_32bytes_to_fr`. |
 | step | `0`, `1` and `2`, one per directory |
 | tree | depth 20. The deposit commitment is the only leaf, at index 0. |
-| setup and prover seed | `[0x53; 32]` |
+| fixture proof blinding seed | `[0x53; 32]` |
 
 So the public inputs of step `N` are step `N`, chunk amount `chunks[N]`, the hash of the destination key, `nullifier = Poseidon(s, N)`, and the depth-20 root shared by all steps:
 
@@ -54,7 +56,7 @@ So the public inputs of step `N` are step `N`, chunk amount `chunks[N]`, the has
 
 Using one key for all three chunks means this fixture does not test choosing between different destinations. The circuit tests in `full_circuit.rs` and `tests/gwc_end_to_end.rs` use three different destinations for that.
 
-`tests/fixture_verifies.rs` checks, for every step, that the proof verifies with the shared keys, that `public_inputs.bin` matches these values, and that `fixture.bin` packs exactly that step's proof and public inputs. Changing the values or the witness does not change `vk.bin` or `kzg_vk.bin`, because the circuit and the setup seed stay the same.
+`tests/fixture_verifies.rs` checks, for every step, that the proof verifies with the shared keys, that `public_inputs.bin` matches these values, and that `fixture.bin` packs exactly that step's proof and public inputs. Changing witness values does not change `vk.bin` or `kzg_vk.bin` when the circuit shape and SRS stay the same. The fixture blinding seed does not determine the SRS or the verifier keys.
 
 `fixture.bin` format:
 
@@ -66,4 +68,6 @@ public_input_count          u32 little-endian
 public_inputs               public_input_count * 32 bytes
 ```
 
-The generator uses deterministic `ParamsKZG::unsafe_setup` to make this vector reproducible. These artifacts are test data, not production SRS material.
+The generator loads the public BN254 KZG SRS from `srs/kzg_bn254_16.srs`, distributed by [Axiom](https://axiom-crypto.s3.amazonaws.com/challenge_0085/kzg_bn254_16.srs). It uses the IOG Halo2 `RawBytes` format with `k = 16`. Set `SRS_PATH` or pass a second generator argument to select another file. The fixed seed is used only for fixture proof blinding; these artifacts remain test data.
+
+`vk.bin` and `kzg_vk.bin` are shared by steps 0, 1 and 2. Proofs, public inputs and packed fixtures exist only in the `step0`, `step1` and `step2` directories. The `H2PF0001` format above is unchanged.

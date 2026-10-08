@@ -76,7 +76,7 @@ fn parse_fixture(data: &[u8]) -> Result<ParsedInput<'_>, u32> {
     })
 }
 
-fn pinned_kzg_vk() -> KzgVk {
+fn fixed_kzg_vk() -> KzgVk {
     let mut g1_one = [0u8; G1_LEN];
     g1_one.copy_from_slice(&EXPECTED_KZG_VK[..G1_LEN]);
     let mut g2_one = [0u8; G2_LEN];
@@ -104,7 +104,7 @@ fn read_u32_le(data: &[u8], cursor: &mut usize) -> Result<u32, u32> {
 
 pub fn run(fixture: &[u8]) -> Result<(), u32> {
     let parsed = parse_fixture(fixture)?;
-    let kzg_vk = pinned_kzg_vk();
+    let kzg_vk = fixed_kzg_vk();
     match verify_gwc(EXPECTED_VK, parsed.proof, &parsed.public_inputs, &kzg_vk) {
         Ok(true) => Ok(()),
         Ok(false) => Err(errors::VERIFIER_REJECTED),
