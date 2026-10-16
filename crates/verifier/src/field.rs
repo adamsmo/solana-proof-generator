@@ -33,6 +33,24 @@ const MODULUS_MINUS_TWO_BE: [u8; 32] = [
     0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xef, 0xff, 0xff, 0xff,
 ];
 
+// IMPORTANT NOTE: `sol_big_mod_exp` inputs are little-endian on Solana (solana-big-mod-exp 4.x, Agave 4.3+).
+// so we are converting from BE constants to LE to match the input format
+#[cfg(all(feature = "solana-syscalls", target_os = "solana"))]
+const MODULUS_LE: [u8; 32] = reverse_bytes(&MODULUS_BE);
+#[cfg(all(feature = "solana-syscalls", target_os = "solana"))]
+const MODULUS_MINUS_TWO_LE: [u8; 32] = reverse_bytes(&MODULUS_MINUS_TWO_BE);
+
+#[cfg(all(feature = "solana-syscalls", target_os = "solana"))]
+const fn reverse_bytes(bytes: &[u8; 32]) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    let mut i = 0;
+    while i < 32 {
+        out[i] = bytes[31 - i];
+        i += 1;
+    }
+    out
+}
+
 /// Canonical big-endian encoding of the BN254 Fr DELTA constant used by
 /// halo2's permutation argument as the coset shift multiplier.
 pub const DELTA_BE: [u8; 32] = [
@@ -190,6 +208,18 @@ pub fn fr_to_bytes_be(value: &Fr) -> [u8; 32] {
     out
 }
 
+#[cfg(all(feature = "solana-syscalls", target_os = "solana"))]
+#[inline]
+fn fr_to_bytes_le(value: &Fr) -> [u8; 32] {
+    reverse_bytes(&fr_to_bytes_be(value))
+}
+
+#[cfg(all(feature = "solana-syscalls", target_os = "solana"))]
+#[inline]
+fn fr_from_bytes_le(bytes: &[u8; 32]) -> Result<Fr, Error> {
+    fr_from_bytes_be(&reverse_bytes(bytes))
+}
+
 #[inline]
 pub fn fr_mul(left: &Fr, right: &Fr) -> Fr {
     Fr::new_unchecked(BigInt::new(mont_mul(&left.0 .0, &right.0 .0)))
@@ -222,8 +252,9 @@ pub fn fr_inverse(value: &Fr) -> Option<Fr> {
 
     #[cfg(all(feature = "solana-syscalls", target_os = "solana"))]
     {
-        // Same ABI as solana-big-mod-exp 3.x (what solana-program re-exported):
-        // pass BE limbs through BigModExpParams into sol_big_mod_exp.
+        // Same ABI as solana-big-mod-exp 4.x (Agave 4.3+): base, exponent,
+        // modulus and result are all little-endian. 3.x was big-endian; the
+        // BE modulus read as LE is even and the syscall rejects it.
         #[repr(C)]
         struct BigModExpParams {
             base: *const u8,
@@ -236,15 +267,15 @@ pub fn fr_inverse(value: &Fr) -> Option<Fr> {
 
         use solana_define_syscall::definitions::sol_big_mod_exp;
 
-        let base = fr_to_bytes_be(value);
+        let base = fr_to_bytes_le(value);
         let mut result = [0u8; 32];
         let params = BigModExpParams {
             base: base.as_ptr(),
             base_len: base.len() as u64,
-            exponent: MODULUS_MINUS_TWO_BE.as_ptr(),
-            exponent_len: MODULUS_MINUS_TWO_BE.len() as u64,
-            modulus: MODULUS_BE.as_ptr(),
-            modulus_len: MODULUS_BE.len() as u64,
+            exponent: MODULUS_MINUS_TWO_LE.as_ptr(),
+            exponent_len: MODULUS_MINUS_TWO_LE.len() as u64,
+            modulus: MODULUS_LE.as_ptr(),
+            modulus_len: MODULUS_LE.len() as u64,
         };
         // SAFETY: params point at live 32-byte buffers; syscall writes
         // modulus_len bytes into `result`.
@@ -254,7 +285,7 @@ pub fn fr_inverse(value: &Fr) -> Option<Fr> {
                 result.as_mut_ptr(),
             );
         }
-        return fr_from_bytes_be(&result).ok();
+        return fr_from_bytes_le(&result).ok();
     }
 
     #[cfg(not(all(feature = "solana-syscalls", target_os = "solana")))]
