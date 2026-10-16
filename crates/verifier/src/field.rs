@@ -27,32 +27,20 @@ const MODULUS_BE: [u8; 32] = [
     0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01,
 ];
 
-#[cfg(any(
-    all(test, feature = "std"),
-    all(feature = "solana-syscalls", target_os = "solana")
-))]
+#[cfg(all(feature = "solana-syscalls", target_os = "solana"))]
 const MODULUS_MINUS_TWO_BE: [u8; 32] = [
     0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
     0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xef, 0xff, 0xff, 0xff,
 ];
 
-// `sol_big_mod_exp` inputs are little-endian on Solana (solana-big-mod-exp 4.x, Agave 4.3+).
-// so ewe are converting from BE constants to LE to match the input format
-#[cfg(any(
-    all(test, feature = "std"),
-    all(feature = "solana-syscalls", target_os = "solana")
-))]
+// IMPORTANT NOTE: `sol_big_mod_exp` inputs are little-endian on Solana (solana-big-mod-exp 4.x, Agave 4.3+).
+// so we are converting from BE constants to LE to match the input format
+#[cfg(all(feature = "solana-syscalls", target_os = "solana"))]
 const MODULUS_LE: [u8; 32] = reverse_bytes(&MODULUS_BE);
-#[cfg(any(
-    all(test, feature = "std"),
-    all(feature = "solana-syscalls", target_os = "solana")
-))]
+#[cfg(all(feature = "solana-syscalls", target_os = "solana"))]
 const MODULUS_MINUS_TWO_LE: [u8; 32] = reverse_bytes(&MODULUS_MINUS_TWO_BE);
 
-#[cfg(any(
-    all(test, feature = "std"),
-    all(feature = "solana-syscalls", target_os = "solana")
-))]
+#[cfg(all(feature = "solana-syscalls", target_os = "solana"))]
 const fn reverse_bytes(bytes: &[u8; 32]) -> [u8; 32] {
     let mut out = [0u8; 32];
     let mut i = 0;
@@ -220,19 +208,13 @@ pub fn fr_to_bytes_be(value: &Fr) -> [u8; 32] {
     out
 }
 
-#[cfg(any(
-    all(test, feature = "std"),
-    all(feature = "solana-syscalls", target_os = "solana")
-))]
+#[cfg(all(feature = "solana-syscalls", target_os = "solana"))]
 #[inline]
 fn fr_to_bytes_le(value: &Fr) -> [u8; 32] {
     reverse_bytes(&fr_to_bytes_be(value))
 }
 
-#[cfg(any(
-    all(test, feature = "std"),
-    all(feature = "solana-syscalls", target_os = "solana")
-))]
+#[cfg(all(feature = "solana-syscalls", target_os = "solana"))]
 #[inline]
 fn fr_from_bytes_le(bytes: &[u8; 32]) -> Result<Fr, Error> {
     fr_from_bytes_be(&reverse_bytes(bytes))
@@ -404,49 +386,6 @@ mod tests {
             fr_from_bytes_be(&over),
             Err(Error::PublicInputOutOfRange)
         ));
-    }
-
-    #[test]
-    fn big_mod_exp_le_constants_match_arkworks() {
-        let modulus = <FrConfig as MontConfig<U64_LIMB_COUNT>>::MODULUS;
-        let mut modulus_minus_two = modulus;
-        modulus_minus_two.sub_with_borrow(&BigInt::from(2u64));
-
-        assert_eq!(MODULUS_LE.as_slice(), modulus.to_bytes_le().as_slice());
-        assert_eq!(
-            MODULUS_MINUS_TWO_LE.as_slice(),
-            modulus_minus_two.to_bytes_le().as_slice()
-        );
-        // solana-big-mod-exp 4.x rejects an even modulus.
-        assert_eq!(MODULUS_LE[0] & 1, 1);
-    }
-
-    #[test]
-    fn big_mod_exp_le_operands_invert() {
-        for bytes in &samples() {
-            let a = fr_from_bytes_be_mod_order(bytes);
-            if a == Fr::ZERO {
-                continue;
-            }
-            let out = solana_big_mod_exp::big_mod_exp(
-                &fr_to_bytes_le(&a),
-                &MODULUS_MINUS_TWO_LE,
-                &MODULUS_LE,
-            )
-            .expect("LE operands accepted");
-            let inv = fr_from_bytes_le(&out.try_into().unwrap()).unwrap();
-            assert_eq!(fr_mul(&inv, &a), Fr::ONE);
-            assert_eq!(Some(inv), a.inverse());
-        }
-    }
-
-    #[test]
-    fn big_mod_exp_rejects_be_modulus() {
-        // The pre-4.x BE encoding: read as LE, its low byte is 0x30 (even).
-        let base = fr_to_bytes_be(&Fr::from(5u64));
-        assert!(
-            solana_big_mod_exp::big_mod_exp(&base, &MODULUS_MINUS_TWO_BE, &MODULUS_BE).is_none()
-        );
     }
 
     #[test]

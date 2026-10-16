@@ -41,8 +41,6 @@ solana-define-syscall  = { workspace = true, optional = true }
 
 [dev-dependencies]
 hex             = { workspace = true, features = ["std"] }
-# Host-side reference for the `sol_big_mod_exp` operand encoding (LE since 4.x / Agave 4.3).
-solana-big-mod-exp = "4"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"

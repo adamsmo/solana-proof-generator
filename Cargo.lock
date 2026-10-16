@@ -27,7 +27,7 @@ dependencies = [
  "num-traits",
  "solana-account",
  "solana-account-info",
- "solana-big-mod-exp 3.0.0",
+ "solana-big-mod-exp",
  "solana-blake3-hasher",
  "solana-bn254",
  "solana-clock",
@@ -1267,7 +1267,6 @@ dependencies = [
  "ark-std 0.5.0",
  "hex",
  "sha3 0.10.9",
- "solana-big-mod-exp 4.0.0",
  "solana-bn254",
  "solana-define-syscall 5.1.0",
 ]
@@ -2545,16 +2544,6 @@ dependencies = [
  "num-bigint 0.4.6",
  "num-traits",
  "solana-define-syscall 3.0.0",
-]
-
-[[package]]
-name = "solana-big-mod-exp"
-version = "4.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f05789c4afc39164132db9dcc117218d412ca1f1271d2c629fc6f554c19e5a44"
-dependencies = [
- "num-bigint 0.4.6",
- "solana-define-syscall 5.1.0",
 ]
 
 [[package]]
